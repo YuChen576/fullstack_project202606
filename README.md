@@ -2,23 +2,69 @@
 
 三層式範例專案：Nginx 提供 Vue 3 靜態檔並反向代理 `/api`，Spring Boot 3 呼叫 PostgreSQL Stored Procedure，資料一致性由 DB 約束與交易保證。
 
-## 啟動
+## 環境需求
+
+- Docker Desktop / Docker Engine
+- Docker Compose v2
+- 本機 `80` port
+- 本機跑測試，需要 Java 17
+- 專案也可透過 Docker build
+
+## 使用 Docker 啟動
+
+專案預設用 Docker Compose 啟動三個服務：
+
+- `db`：PostgreSQL 16，第一次建立 volume 時會自動執行 `DB/001_init.sql`
+- `app`：Spring Boot API，連線到 `db:5432`
+- `nginx`：提供 Vue 靜態檔，並把 `/api/*` 反向代理到 Spring Boot
+
+在專案根目錄執行：
 
 ```bash
 docker compose up -d --build
+```
+
+啟動完成後檢查容器狀態：
+
+```bash
+docker compose ps
+```
+
+## 開啟系統
+
+瀏覽器開啟：
+
+```text
+http://localhost
+```
+
+API 確認後端和資料庫是否正常：
+
+```bash
 curl -f http://localhost/api/seats
 ```
 
-瀏覽器開啟 `http://localhost`。
+## 執行測試
+
+後端測試使用 Gradle：
+
+```bash
+./gradlew test
+```
+
+測試使用 Testcontainers，執行時需要 Docker 正在運作，且目前使用者有權限連線 Docker socket。
+前端 production build 可用：
+
+```bash
+cd frontend
+npm install --no-package-lock
+npm run build
+```
 
 ## 設計決策
 
 - DB 存取集中在 Stored Procedure，Java Repository 使用 `SimpleJdbcCall`。
 - `SEAT_CHANGE_LOG` 用於稽核，也作為 `snapshotVersion` 來源。
-- 清除本來沒有座位的員工回 400，因為正常前端流程不會產生該操作。
-- 不用 message queue：這是低併發內部工具，同步交易語意由 PostgreSQL 保證。
-- 不用 Redis：座位資料量極小，快取會增加一致性風險。
-- 不做登入授權：題目未要求；真實系統可接 Spring Security 與企業 SSO。
 
 ## API
 
