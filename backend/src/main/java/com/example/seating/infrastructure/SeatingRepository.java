@@ -23,44 +23,27 @@ import org.springframework.stereotype.Repository;
 import static java.sql.Types.OTHER;
 import static java.sql.Types.VARCHAR;
 
-/*
- * Repository 是唯一接觸資料庫的 Java class。
- *
- * 注意：這不是 Spring Data JpaRepository，也沒有 EntityManager / Session。
- * 題目要求「所有資料庫存取一律透過 Stored Procedure」，所以這裡只使用
- * JdbcTemplate + SimpleJdbcCall 呼叫 PostgreSQL function。
- */
 @Repository
 public class SeatingRepository {
     private final JdbcTemplate jdbcTemplate;
     private final ObjectMapper objectMapper;
     private final SimpleJdbcCall getSeatsCall;
     private final SimpleJdbcCall getEmployeesCall;
+    private final SimpleJdbcCall getSeatSequencesCall;
     private final SimpleJdbcCall assignCall;
 
     public SeatingRepository(JdbcTemplate jdbcTemplate, ObjectMapper objectMapper) {
         this.jdbcTemplate = jdbcTemplate;
         this.objectMapper = objectMapper;
-        /*
-         * SimpleJdbcCall 會幫忙建立 callable statement。
-         * 對照 JDBC 寫法，大致等於 prepareCall("{? = call sp_get_seats()}")。
-         */
         this.getSeatsCall = new SimpleJdbcCall(jdbcTemplate).withFunctionName("sp_get_seats");
         this.getEmployeesCall = new SimpleJdbcCall(jdbcTemplate).withFunctionName("sp_get_employees");
+        this.getSeatSequencesCall = new SimpleJdbcCall(jdbcTemplate).withFunctionName("sp_get_seat_sequences");
         this.assignCall = new SimpleJdbcCall(jdbcTemplate)
                 .withFunctionName("sp_assign_seats")
-                /*
-                 * p_changes 是 JSONB，JDBC type 用 OTHER。
-                 * 這裡仍是參數化呼叫，不是字串拼 SQL。
-                 */
                 .declareParameters(new SqlParameter("p_snapshot_version", VARCHAR), new SqlParameter("p_changes", OTHER));
     }
 
     public SeatSnapshotResponse getSeats() {
-        /*
-         * SP 回傳 JSON 字串，再由 Jackson 映射成 Java record DTO。
-         * 因此 DB 裡 jsonb_build_object 的 key 要和 DTO 欄位名稱一致。
-         */
         return parse(functionText(getSeatsCall), SeatSnapshotResponse.class);
     }
 
@@ -69,19 +52,12 @@ public class SeatingRepository {
     }
 
     public Set<Integer> getSeatSequences() {
-        /*
-         * 這個查詢目前直接查 table，只用於 request validation。
-         * 若要完全符合題目「查詢也走 SP」的嚴格版，可再包一支 sp_get_seat_sequences。
-         */
-        return jdbcTemplate.queryForList("select floor_seat_seq from seating_chart", Integer.class).stream().collect(Collectors.toSet());
+        List<Integer> seatSequences = parse(functionText(getSeatSequencesCall), new TypeReference<>() {});
+        return seatSequences.stream().collect(Collectors.toSet());
     }
 
     public SeatSnapshotResponse assign(String snapshotVersion, List<AssignmentChangeRequest> changes) {
         try {
-            /*
-             * 批次 changes 轉成 JSON 傳給 PostgreSQL JSONB 參數。
-             * 傳 JSONB 是為了讓一支 SP 接收多筆異動，並在同一個 DB transaction 內處理。
-             */
             String changeJson = objectMapper.writeValueAsString(changes);
             Map<String, Object> args = new HashMap<>();
             args.put("p_snapshot_version", snapshotVersion);
@@ -100,11 +76,6 @@ public class SeatingRepository {
 
     private BusinessException translate(DataAccessException ex) {
         String message = rootMessage(ex);
-        /*
-         * SP 用 RAISE EXCEPTION 丟出固定錯誤碼字串。
-         * Repository 將 DB 例外轉成應用層 BusinessException，再由 GlobalExceptionHandler
-         * 轉成 HTTP 400 / 409。
-         */
         if (message.contains("CONFLICT_STALE_SNAPSHOT")) {
             return new BusinessException(ErrorCode.CONFLICT_STALE_SNAPSHOT, "Seat snapshot is stale", getSeats());
         }

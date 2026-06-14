@@ -1,25 +1,20 @@
 services:
   db:
-    # PostgreSQL 容器。題目要求 DB 啟動時自動套用 DB 腳本。
     image: postgres:16-alpine
     environment:
       POSTGRES_DB: seating
       POSTGRES_USER: seating
       POSTGRES_PASSWORD: seating
     volumes:
-      # PostgreSQL 官方 image 會在「第一次建立資料庫」時執行這個目錄下的 .sql。
       - ./DB:/docker-entrypoint-initdb.d:ro
-      # 實際資料存放在 volume。若要回到乾淨種子資料，可執行 docker compose down -v。
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
-      # app 會等 db healthy 後才啟動，避免 Spring Boot 太早連線失敗。
       test: ["CMD-SHELL", "pg_isready -U seating -d seating"]
       interval: 5s
       timeout: 5s
       retries: 20
 
   app:
-    # Spring Boot 後端。Dockerfile 會用 JDK 17 build jar，再用 JRE 17 執行。
     build:
       context: .
       dockerfile: backend/Dockerfile
@@ -32,12 +27,10 @@ services:
         condition: service_healthy
 
   nginx:
-    # Nginx 是三層式架構的 Web Server：提供 Vue 靜態檔，並 proxy /api 到 app。
     build:
       context: .
       dockerfile: nginx/Dockerfile
     ports:
-      # 對外開 http://localhost
       - "80:80"
     depends_on:
       - app

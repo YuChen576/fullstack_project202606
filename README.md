@@ -11,15 +11,6 @@ curl -f http://localhost/api/seats
 
 瀏覽器開啟 `http://localhost`。
 
-## 本機測試
-
-本機目前若尚未安裝 Java 17+，可使用專案提供的 Docker 型 `./gradlew`：
-
-```bash
-chmod +x ./gradlew
-./gradlew test
-```
-
 ## 設計決策
 
 - DB 存取集中在 Stored Procedure，Java Repository 使用 `SimpleJdbcCall`。

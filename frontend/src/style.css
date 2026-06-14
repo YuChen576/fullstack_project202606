@@ -56,6 +56,15 @@ button:disabled {
   opacity: 0.55;
 }
 
+.seat:disabled {
+  opacity: 1;
+}
+
+.seat.occupied:disabled,
+.seat.pending:disabled {
+  cursor: not-allowed;
+}
+
 .primary {
   color: #fff;
   border-color: #2563eb;
