@@ -1,0 +1,7 @@
+/*
+ * 根目錄的 ./gradlew test 會被題目驗證指令呼叫。
+ * 這裡把 root test 代理到 backend:test，避免只跑到空的 root project。
+ */
+tasks.register('test') {
+    dependsOn ':backend:test'
+}
